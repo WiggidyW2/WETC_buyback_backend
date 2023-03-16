@@ -1,0 +1,21 @@
+[package]
+name = "wetc_buyback_backend"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { verison = "1.26.0", features = ["macros", "rt-multi-thread"] }
+serde = { version = "1.0", features = ["derive"] }
+phf = { version = "0.11", features = ["macros"] }
+gcloud-sdk = { version = "0.19.18" } # Needed by firestore
+firestore = { version = "0.30.3" } # Try to undepend on this
+serde_json = { version = "1.0" }
+futures = { version = "0.3.26" }
+prost = { version = "0.11.8" }
+regex = { version = "1.7.1" }
+tonic = { version = "0.8.3" }
+
+[build-dependencies]
+tonic-build = { verison = "0.8.3" }

@@ -1,0 +1,44 @@
+syntax = "proto3";
+package weve_esi_proto;
+
+message MarketOrdersReq {
+    int32 type_id = 1;
+    string market = 2;
+    bool buy = 3;
+}
+
+message MarketOrder {
+    int32 quantity = 1;
+    double price = 2;
+}
+
+message MarketOrdersRep {
+    repeated MarketOrder market_orders = 1;
+}
+
+message AdjustedPriceReq {
+    int32 type_id = 1;
+}
+
+message AdjustedPriceRep {
+    double adjusted_price = 1;
+}
+
+message SystemIndexReq {
+    int32 system_id = 1;
+}
+
+message SystemIndexRep {
+    double manufacturing = 1;
+    double research_te = 2;
+    double research_me = 3;
+    double copying = 4;
+    double invention = 5;
+    double reactions = 6;
+}
+
+service WeveMarket {
+    rpc MarketOrders(MarketOrdersReq) returns (MarketOrdersRep);
+    rpc AdjustedPrice(AdjustedPriceReq) returns (AdjustedPriceRep);
+    rpc SystemIndex(SystemIndexReq) returns (SystemIndexRep);
+}
