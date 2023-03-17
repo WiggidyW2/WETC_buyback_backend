@@ -13,16 +13,16 @@ pub enum Price {
     Rejected,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PricingModel {
     SingleMarketSingleItemMaxBuy(SingleMarketSingleItemMaxBuy),
     SingleMarketMultiItemMaxBuy(SingleMarketMultiItemMaxBuy),
     Rejected,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SingleMarketSingleItemMaxBuy(pub TypeId, pub Market, pub PriceMod);
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SingleMarketMultiItemMaxBuy(
     pub [Option<(TypeId, Quantity)>; MAX_MULTI_ITEM],
     pub Market,

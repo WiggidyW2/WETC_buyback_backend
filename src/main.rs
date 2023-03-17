@@ -30,44 +30,46 @@ type Quantity = f64;
 type PriceMod = f64;
 type TypeId = i32;
 
-
 #[tokio::main]
 async fn main() {
-    let db = FirestoreDb::with_options_token_source(
-        FirestoreDbOptions::new(io::read_project_id().unwrap()),
-        gcloud_sdk::GCP_DEFAULT_SCOPES.clone(),
-        gcloud_sdk::TokenSourceType::Json(io::read_firestore_token().unwrap()),
-    )
-        .await
-        .map_err(|e| Error::FirestoreConnectionError(e))
-        .unwrap();
-
     let mut buf: String = String::new();
     read_stdin(&mut buf).unwrap();
 
     let parsed_input: ParsedInput = ParsedInput::from_str(&buf).unwrap();
-    let res: Response = match parsed_input {
-        ParsedInput::Items(v) => response_from_items(v, &db).await.unwrap(),
-        ParsedInput::Hash(s) => response_from_hash(s, &db).await.unwrap(),
+    let response: Response = match parsed_input {
+        ParsedInput::Items(v) => response_from_items(v).await.unwrap(),
+        ParsedInput::Hash(s) => response_from_hash(s).await.unwrap(),
     };
 
-    res.to_stdout().unwrap();
+    response.to_stdout().unwrap();
 }
 
 async fn response_from_items(
     items: Vec<(Item, PricingModel)>,
-    db: &FirestoreDb,
 ) -> Result<Response, Error> {
-    if items.len() == 0 {
-        return Ok(Response::with_capacity(0));
+    let mut response: Response = Response::with_capacity(items.len());
+
+    let mut return_empty: bool = true;
+    for (item) in &items {
+        if &item.1 != &PricingModel::Rejected {
+            return_empty = false;
+            break;
+        }
+    }
+    if return_empty {
+        let mut response = Response::with_capacity(items.len());
+        for item in items {
+            response.push(item.0, Price::Rejected);
+        }
+        return Ok(response);
     }
 
+    let db = get_db();
     let dst = io::read_dst()?;
     let client: Client = Client::connect(dst)
         .await
         .map_err(|e| Error::GRPCConnectionError(e))?;
 
-    let mut response: Response = Response::with_capacity(items.len());
     let mut stream = items
         .into_iter()
         .map(|(item, model)| get_price(item, model, client.clone()))
@@ -81,7 +83,9 @@ async fn response_from_items(
     response.sort();
     let hash_key: &str = response.with_hash_key();
 
-    match db.fluent()
+    match db
+        .await?
+        .fluent()
         .insert()
         .into("hash_cache")
         .document_id(hash_key)
@@ -93,11 +97,10 @@ async fn response_from_items(
         }
 }
 
-async fn response_from_hash(
-    hash_cache_key: &str,
-    db: &FirestoreDb,
-) -> Result<Response, Error> {
-    db.fluent()
+async fn response_from_hash(hash_cache_key: &str) -> Result<Response, Error> {
+    get_db()
+        .await?
+        .fluent()
         .select()
         .by_id_in("hash_cache")
         .obj()
@@ -116,6 +119,16 @@ async fn get_price(
         .get_price(client)
         .await
         .map(|p| (item, p))
+}
+
+async fn get_db() -> Result<FirestoreDb, Error> {
+    FirestoreDb::with_options_token_source(
+        FirestoreDbOptions::new(io::read_project_id().unwrap()),
+        gcloud_sdk::GCP_DEFAULT_SCOPES.clone(),
+        gcloud_sdk::TokenSourceType::Json(io::read_firestore_token().unwrap()),
+    )
+        .await
+        .map_err(|e| Error::FirestoreConnectionError(e))
 }
 
 // Returns false if the error is "AlreadyExists"
