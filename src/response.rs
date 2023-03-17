@@ -18,6 +18,7 @@ pub struct Response {
     pub accepted: Vec<AcceptedResultItem>,
     pub rejected: Vec<Item>,
     pub hash: String,
+    pub location: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,11 +30,12 @@ pub struct AcceptedResultItem {
 }
 
 impl Response {
-    pub fn with_capacity(capacity: usize) -> Self {
+    pub fn with_capacity(capacity: usize, location: String) -> Self {
         Response {
             accepted: Vec::with_capacity(capacity),
             rejected: Vec::with_capacity(capacity),
             hash: String::new(),
+            location: location,
         }
     }
 
@@ -78,6 +80,7 @@ impl Response {
 
 impl Hash for Response {
     fn hash<H: Hasher>(&self, state: &mut H) {
+        self.location.hash(state);
         for item in self
             .accepted
             .iter()

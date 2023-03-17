@@ -42,7 +42,7 @@ pub fn read_firestore_token() -> Result<String, Error> {
 }
 
 pub enum ParsedInput<'s> {
-    Items(Vec<(Item, PricingModel)>),
+    Items((Vec<(Item, PricingModel)>, &'s str)),
     Hash(Hash<'s>),
 }
 
@@ -79,14 +79,11 @@ impl<'s> ParsedInput<'s> {
     pub fn from_str(s: &'s str) -> Result<ParsedInput<'s>, Error> {
         let input: Input<'s> = serde_json::from_str(s)
             .map_err(|e| Error::DeserializationError(e))?;
-        ParsedInput::try_from(input)
+        ParsedInput::try_from_input(input)
     }
-}
 
-impl<'s> TryFrom<Input<'s>> for ParsedInput<'s> {
-    type Error = Error;
-    fn try_from(value: Input<'s>) -> Result<Self, Self::Error> {
-        let (location, items): (&str, Vec<Item>) = match value {
+    fn try_from_input(input: Input<'s>) -> Result<ParsedInput<'s>, Error> {
+        let (location, items): (&str, Vec<Item>) = match input {
             Input::HashInput(h) => return Ok(ParsedInput::Hash(h.hash)),
             Input::ItemInput(i) => match i.items {
                 ItemInputItems::Json(v) => (
@@ -114,6 +111,6 @@ impl<'s> TryFrom<Input<'s>> for ParsedInput<'s> {
             inner.push(entry);
         }
 
-        Ok(ParsedInput::Items(inner))
+        Ok(ParsedInput::Items((inner, location)))
     }
 }

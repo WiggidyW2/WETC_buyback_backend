@@ -37,7 +37,7 @@ async fn main() {
 
     let parsed_input: ParsedInput = ParsedInput::from_str(&buf).unwrap();
     let response: Response = match parsed_input {
-        ParsedInput::Items(v) => response_from_items(v).await.unwrap(),
+        ParsedInput::Items((v, l)) => response_from_items(v, l).await.unwrap(),
         ParsedInput::Hash(s) => response_from_hash(s).await.unwrap(),
     };
 
@@ -46,18 +46,21 @@ async fn main() {
 
 async fn response_from_items(
     items: Vec<(Item, PricingModel)>,
+    location: &str,
 ) -> Result<Response, Error> {
-    let mut response: Response = Response::with_capacity(items.len());
+    let mut response: Response = Response::with_capacity(
+        items.len(),
+        location.to_string(),
+    );
 
     let mut return_empty: bool = true;
-    for (item) in &items {
+    for item in &items {
         if &item.1 != &PricingModel::Rejected {
             return_empty = false;
             break;
         }
     }
     if return_empty {
-        let mut response = Response::with_capacity(items.len());
         for item in items {
             response.push(item.0, Price::Rejected);
         }
@@ -106,7 +109,7 @@ async fn response_from_hash(hash_cache_key: &str) -> Result<Response, Error> {
         .obj()
         .one(hash_cache_key)
         .await
-        .map(|o| o.unwrap_or(Response::with_capacity(0)))
+        .map(|o| o.unwrap_or(Response::with_capacity(0, "".to_string())))
         .map_err(|e| Error::FirestoreSelectError(e))
 }
 
