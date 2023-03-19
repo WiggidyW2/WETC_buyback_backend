@@ -7,21 +7,11 @@ use crate::{
     Hash,
 };
 
-use std::{
-    io::{self, Read},
-    env::var,
-};
+use std::env::var;
 
 use serde::Deserialize;
 use serde_json;
 use tonic;
-
-pub fn read_stdin(buf: &mut String) -> Result<(), Error> {
-    io::stdin()
-        .read_to_string(buf)
-        .map(|_| ())
-        .map_err(|e| Error::StdinError(e))
-}
 
 pub fn read_dst() -> Result<
     impl std::convert::TryInto<
@@ -78,6 +68,12 @@ enum ItemInputItems {
 impl<'s> ParsedInput<'s> {
     pub fn from_str(s: &'s str) -> Result<ParsedInput<'s>, Error> {
         let input: Input<'s> = serde_json::from_str(s)
+            .map_err(|e| Error::DeserializationError(e))?;
+        ParsedInput::try_from_input(input)
+    }
+
+    pub fn from_slice(b: &'s [u8]) -> Result<ParsedInput<'s>, Error> {
+        let input: Input<'s> = serde_json::from_slice(b)
             .map_err(|e| Error::DeserializationError(e))?;
         ParsedInput::try_from_input(input)
     }

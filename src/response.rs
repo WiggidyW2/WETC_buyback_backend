@@ -72,7 +72,7 @@ impl Response {
             .cmp(b.name.as_str()));
     }
 
-    fn to_json(&self) -> Result<String, Error> {
+    pub fn to_json(&self) -> Result<String, Error> {
         serde_json::to_string(self)
             .map_err(|e| Error::SerializationError(e))
     }

@@ -4,6 +4,10 @@ use tonic;
 
 #[derive(Debug)]
 pub enum Error {
+    EnvError(std::env::VarError),
+    EnvParseError(std::net::AddrParseError),
+    ListenerBindError(std::io::Error),
+    ListenerAcceptError(std::io::Error),
     GRPCConnectionError(tonic::transport::Error),
     GRPCStatus(tonic::Status),
     SerializationError(serde_json::Error),
@@ -13,11 +17,16 @@ pub enum Error {
     FirestoreConnectionError(firestore::errors::FirestoreError),
     FirestoreInsertError(firestore::errors::FirestoreError),
     FirestoreSelectError(firestore::errors::FirestoreError),
-    EnvError(std::env::VarError),
     ParserSpawnError(std::io::Error),
     ParserPipeError(std::io::Error),
     ParserRuntimeError(String),
     ParserDeserializationError(serde_json::Error),
+}
+
+impl From<std::net::AddrParseError> for Error {
+    fn from(err: std::net::AddrParseError) -> Self {
+        Error::EnvParseError(err)        
+    }
 }
 
 impl From<std::env::VarError> for Error {
@@ -41,5 +50,17 @@ impl From<tonic::Status> for Error {
 impl From<std::io::Error> for Error {
     fn from(err: std::io::Error) -> Self {
         Error::StdinError(err)
+    }
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(self, f)
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
     }
 }
