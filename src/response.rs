@@ -19,6 +19,7 @@ pub struct Response {
     pub rejected: Vec<Item>,
     pub hash: String,
     pub location: String,
+    pub sum: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,14 +37,18 @@ impl Response {
             rejected: Vec::with_capacity(capacity),
             hash: String::new(),
             location: location,
+            sum: 0.0,
         }
     }
 
     pub fn push(&mut self, item: Item, price: Price) {
         match price {
-            Price::Accepted(f) => self.accepted.push((item, f).into()),
+            Price::Accepted(f) => {
+                self.accepted.push((item, f).into());
+                self.sum += f
+            },
             Price::Rejected => self.rejected.push(item),
-        }
+        };
     }
 
     pub fn to_stdout(&self) -> Result<(), Error> {
