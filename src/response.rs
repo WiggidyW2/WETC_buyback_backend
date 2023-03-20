@@ -45,7 +45,11 @@ impl Response {
         match price {
             Price::Accepted(f) => {
                 self.accepted.push((item, f).into());
-                self.sum += f
+                self.sum += self
+                    .accepted
+                    .last()
+                    .unwrap()
+                    .price_total
             },
             Price::Rejected => self.rejected.push(item),
         };
