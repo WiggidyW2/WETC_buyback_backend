@@ -133,6 +133,7 @@ fn preflight_response() -> hyper::Response<Body> {
 fn success_response(json_body: String) -> hyper::Response<Body> {
     hyper::Response::builder()
         .status(hyper::StatusCode::OK)
+        .header("Access-Control-Allow-Origin", "*")
         .header("Content-Type", "application/json")
         .body(Body::from(json_body))
         .unwrap()
@@ -141,6 +142,7 @@ fn success_response(json_body: String) -> hyper::Response<Body> {
 fn err_response(error: Error) -> hyper::Response<Body> {
     hyper::Response::builder()
         .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
+        .header("Access-Control-Allow-Origin", "*")
         .header("Content-Type", "application/json")
         .body(Body::from(
             json!({"error": format!("{}", error)}).to_string(),
