@@ -16,6 +16,7 @@ use hyper::{self, service::service_fn, server::conn::Http, Body};
 use futures::stream::TryStreamExt;
 use tokio::net::TcpListener;
 use firestore::FirestoreDb;
+use serde_json::json;
 
 static mut DB: Option<FirestoreDb> = None;
 static mut CLIENT: Option<Client> = None;
@@ -46,48 +47,59 @@ async fn main() {
     }
 }
 
+macro_rules! unwrap_or_rep {
+    ( $e:expr ) => {
+        match $e {
+            Ok(x) => x,
+            Err(e) => return Ok(err_response(e)),
+        }
+    }
+}
+
 async fn serve(
     req: hyper::Request<Body>,
 ) -> Result<hyper::Response<Body>, Box<dyn std::error::Error + Send + Sync>> {
-    let buf: Vec<u8> = req
+    match req.method() {
+        &hyper::Method::OPTIONS => return Ok(preflight_response()),
+        _ => match validate(&req) {
+            Some(invalid) => return Ok(invalid),
+            None => (),
+        },
+    };
+
+    let buf: Vec<u8> = unwrap_or_rep!(req
         .into_body()
         .try_fold(Vec::new(), |mut data, chunk| async move {
             data.extend_from_slice(&chunk);
             Ok(data)
         })
-        .await?;
+        .await
+        .map_err(|e| Error::HyperRequestBodyError(e.into()))
+    );
 
-    let parsed_input = match ParsedInput::from_slice(&buf) {
-        Ok(pi) => pi,
-        Err(e) => return Ok(err_response(e)),
-    };
+    let parsed_input = unwrap_or_rep!(ParsedInput::from_slice(&buf));
     let response: Response = match parsed_input {
-        ParsedInput::Items((v, l)) => match response_from_items(
-            v,
-            l,
-            get_db(),
-            get_client(),
+        ParsedInput::Items((v, l)) => unwrap_or_rep!(response_from_items(
+            v, l, get_db(), get_client(),
         )
             .await
-        {
-            Ok(rep) => rep,
-            Err(e) => return Ok(err_response(e)),
-        },
-        ParsedInput::Hash(h) => match response_from_hash(
-            h,
-            get_db(),
+        ),
+        ParsedInput::Hash(h) => unwrap_or_rep!(response_from_hash(
+            h, get_db(),
         )
             .await
-        {
-            Ok(rep) => rep,
-            Err(e) => return Ok(err_response(e)),
-        },
+        ),
     };
 
     match response.to_json() {
-        Ok(j) => Ok(hyper::Response::new(Body::from(j))),
+        Ok(j) => Ok(success_response(j)),
         Err(e) => Ok(err_response(e)),
     }
+}
+
+// Return a response only if the request is invalid
+fn validate(_req: &hyper::Request<Body>) -> Option<hyper::Response<Body>> {
+    None
 }
 
 fn get_client() -> &'static Client {
@@ -108,10 +120,31 @@ fn get_db() -> &'static FirestoreDb {
     }
 }
 
+fn preflight_response() -> hyper::Response<Body> {
+    hyper::Response::builder()
+        .status(hyper::StatusCode::OK)
+        .header("Access-Control-Allow-Origin", "*")
+        .header("Access-Control-Allow-Headers", "*")
+        .header("Access-Control-Allow-Methods", "POST, OPTIONS")
+        .body(Body::default())
+        .unwrap()
+}
+
+fn success_response(json_body: String) -> hyper::Response<Body> {
+    hyper::Response::builder()
+        .status(hyper::StatusCode::OK)
+        .header("Content-Type", "application/json")
+        .body(Body::from(json_body))
+        .unwrap()
+}
+
 fn err_response(error: Error) -> hyper::Response<Body> {
     hyper::Response::builder()
         .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
-        .body(Body::from(format!("{:?}", error)))
+        .header("Content-Type", "application/json")
+        .body(Body::from(
+            json!({"error": format!("{}", error)}).to_string(),
+        ))
         .unwrap()
 }
 
