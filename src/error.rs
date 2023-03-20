@@ -8,6 +8,7 @@ pub enum Error {
     EnvParseError(std::net::AddrParseError),
     ListenerBindError(std::io::Error),
     ListenerAcceptError(std::io::Error),
+    HyperRequestBodyError(Box<dyn std::error::Error + Send + Sync>),
     GRPCConnectionError(tonic::transport::Error),
     GRPCStatus(tonic::Status),
     SerializationError(serde_json::Error),
@@ -21,6 +22,7 @@ pub enum Error {
     ParserPipeError(std::io::Error),
     ParserRuntimeError(String),
     ParserDeserializationError(serde_json::Error),
+
 }
 
 impl From<std::net::AddrParseError> for Error {
@@ -47,11 +49,11 @@ impl From<tonic::Status> for Error {
     }
 }
 
-impl From<std::io::Error> for Error {
-    fn from(err: std::io::Error) -> Self {
-        Error::StdinError(err)
-    }
-}
+// impl From<std::io::Error> for Error {
+//     fn from(err: std::io::Error) -> Self {
+//         Error::StdinError(err)
+//     }
+// }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
