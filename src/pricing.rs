@@ -1,5 +1,5 @@
 use crate::{
-    {TypeId, Market, Quantity, Client, PriceMod},
+    {TypeId, Market, Quantity, Client, PriceMod, PriceSource},
     static_map::MAX_MULTI_ITEM,
     error::Error,
     proto::*,
@@ -21,12 +21,18 @@ pub enum PricingModel {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct SingleMarketSingleItemMaxBuy(pub TypeId, pub Market, pub PriceMod);
+pub struct SingleMarketSingleItemMaxBuy(
+    pub TypeId,
+    pub Market,
+    pub PriceMod,
+    pub PriceSource,
+);
 #[derive(Debug, Clone, PartialEq)]
 pub struct SingleMarketMultiItemMaxBuy(
     pub [Option<(TypeId, Quantity)>; MAX_MULTI_ITEM],
     pub Market,
     pub PriceMod,
+    pub PriceSource,
 );
 
 trait WeveMarketMessages {
@@ -35,6 +41,7 @@ trait WeveMarketMessages {
         &self,
         reps: Vec<(MarketOrdersReq, MarketOrdersRep)>,
     ) -> Price;
+    fn price_source(&self) -> PriceSource;
 }
 
 impl PricingModel {
@@ -56,6 +63,14 @@ impl PricingModel {
             PricingModel::Rejected => unreachable!(),
         })
     }
+
+    pub fn price_source(&self) -> PriceSource {
+        match self {
+            PricingModel::SingleMarketSingleItemMaxBuy(p) => p.price_source(),
+            PricingModel::SingleMarketMultiItemMaxBuy(p) => p.price_source(),
+            PricingModel::Rejected => "Rejected",
+        }
+    }
 }
 
 impl WeveMarketMessages for SingleMarketSingleItemMaxBuy {
@@ -66,6 +81,7 @@ impl WeveMarketMessages for SingleMarketSingleItemMaxBuy {
             buy: true,
         }]
     }
+
     fn get_price(
         &self,
         reps: Vec<(MarketOrdersReq, MarketOrdersRep)>,
@@ -82,6 +98,10 @@ impl WeveMarketMessages for SingleMarketSingleItemMaxBuy {
             Some(order) => Price::Accepted(order.price * self.2),
             None => Price::Rejected, // This is when there are no orders
         }
+    }
+
+    fn price_source(&self) -> PriceSource {
+        self.3
     }
 }
 
@@ -100,6 +120,7 @@ impl WeveMarketMessages for SingleMarketMultiItemMaxBuy {
             )
             .collect()
     }
+
     fn get_price(
         &self,
         reps: Vec<(MarketOrdersReq, MarketOrdersRep)>,
@@ -125,6 +146,10 @@ impl WeveMarketMessages for SingleMarketMultiItemMaxBuy {
             }
         }
         Price::Accepted(price * self.2)
+    }
+
+    fn price_source(&self) -> PriceSource {
+        self.3
     }
 }
 

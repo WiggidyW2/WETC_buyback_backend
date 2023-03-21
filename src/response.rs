@@ -1,4 +1,5 @@
 use crate::{
+    PriceSource,
     pricing::Price,
     error::Error,
     item::Item,
@@ -16,7 +17,7 @@ use serde_json;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Response {
     pub accepted: Vec<AcceptedResultItem>,
-    pub rejected: Vec<Item>,
+    pub rejected: Vec<RejectedResultItem>,
     pub hash: String,
     pub location: String,
     pub sum: f64,
@@ -28,6 +29,14 @@ pub struct AcceptedResultItem {
     pub item: Item,
     pub price_per: f64,
     pub price_total: f64,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RejectedResultItem {
+    #[serde(flatten)]
+    pub item: Item,
+    pub source: String,
 }
 
 impl Response {
@@ -41,17 +50,17 @@ impl Response {
         }
     }
 
-    pub fn push(&mut self, item: Item, price: Price) {
+    pub fn push(&mut self, item: Item, price: Price, source: PriceSource) {
         match price {
             Price::Accepted(f) => {
-                self.accepted.push((item, f).into());
+                self.accepted.push((item, f, source).into());
                 self.sum += self
                     .accepted
                     .last()
                     .unwrap()
                     .price_total
             },
-            Price::Rejected => self.rejected.push(item),
+            Price::Rejected => self.rejected.push((item, source).into()),
         };
     }
 
@@ -76,9 +85,10 @@ impl Response {
             .as_str()
             .cmp(b.item.name.as_str()));
         self.rejected.sort_by(|a, b| a
+            .item
             .name
             .as_str()
-            .cmp(b.name.as_str()));
+            .cmp(b.item.name.as_str()));
     }
 
     pub fn to_json(&self) -> Result<String, Error> {
@@ -103,18 +113,28 @@ impl Hash for Response {
             .rejected
             .iter()
         {
-            item.name.hash(state);
-            to_fstring(&item.quantity).hash(state);
+            item.item.name.hash(state);
+            to_fstring(&item.item.quantity).hash(state);
         }
     }
 }
 
-impl From<(Item, f64)> for AcceptedResultItem {
-    fn from(value: (Item, f64)) -> Self {
+impl From<(Item, f64, PriceSource)> for AcceptedResultItem {
+    fn from(value: (Item, f64, PriceSource)) -> Self {
         AcceptedResultItem {
             price_per: value.1,
             price_total: value.0.quantity * value.1,
             item: value.0,
+            source: value.2.to_string(),
+        }
+    }
+}
+
+impl From<(Item, PriceSource)> for RejectedResultItem {
+    fn from(value: (Item, PriceSource)) -> Self {
+        RejectedResultItem {
+            item: value.0,
+            source: value.1.to_string(),
         }
     }
 }

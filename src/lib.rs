@@ -23,6 +23,7 @@ use gcloud_sdk;
 pub type Client = proto::weve_market_client::WeveMarketClient<
     tonic::transport::Channel
 >;
+type PriceSource = &'static str;
 type Location = &'static str;
 type Market = &'static str;
 type Hash<'s> = &'s str;
@@ -51,7 +52,7 @@ pub async fn response_from_items(
     }
     if return_empty {
         for item in items {
-            response.push(item.0, Price::Rejected);
+            response.push(item.0, Price::Rejected, item.1.price_source());
         }
         return Ok(response);
     }
@@ -60,11 +61,11 @@ pub async fn response_from_items(
         .into_iter()
         .map(|(item, model)| get_price(item, model, client.clone()))
         .collect::<FuturesUnordered<_>>();
-    while let Some((item, price)) = stream
+    while let Some((item, price, price_source)) = stream
         .try_next()
         .await?
     {
-        response.push(item, price);
+        response.push(item, price, price_source);
     }
     response.sort();
     let hash_key: &str = response.with_hash_key();
@@ -100,7 +101,7 @@ pub async fn shell_response_from_items(
     }
     if return_empty {
         for item in items {
-            response.push(item.0, Price::Rejected);
+            response.push(item.0, Price::Rejected, item.1.price_source());
         }
         return Ok(response);
     }
@@ -112,11 +113,11 @@ pub async fn shell_response_from_items(
         .into_iter()
         .map(|(item, model)| get_price(item, model, client.clone()))
         .collect::<FuturesUnordered<_>>();
-    while let Some((item, price)) = stream
+    while let Some((item, price, price_source)) = stream
         .try_next()
         .await?
     {
-        response.push(item, price);
+        response.push(item, price, price_source);
     }
     response.sort();
     let hash_key: &str = response.with_hash_key();
@@ -181,11 +182,11 @@ async fn get_price(
     item: Item,
     pricing_model: PricingModel,
     client: Client,
-) -> Result<(Item, Price), Error> {
+) -> Result<(Item, Price, PriceSource), Error> {
     pricing_model
         .get_price(client)
         .await
-        .map(|p| (item, p))
+        .map(|p| (item, p, pricing_model.price_source()))
 }
 
 // Returns false if the error is "AlreadyExists"
