@@ -9,6 +9,7 @@ use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
     io::{self, Write},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use serde::{Serialize, Deserialize};
@@ -21,6 +22,7 @@ pub struct Response {
     pub hash: String,
     pub location: String,
     pub sum: f64,
+    pub timestamp: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,6 +49,10 @@ impl Response {
             hash: String::new(),
             location: location,
             sum: 0.0,
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Now < UnixEpoch?")
+                .as_secs(),
         }
     }
 
