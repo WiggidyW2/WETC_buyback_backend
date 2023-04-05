@@ -23,6 +23,7 @@ pub struct Response {
     pub location: String,
     pub sum: f64,
     pub timestamp: u64,
+    pub version: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,6 +54,7 @@ impl Response {
                 .duration_since(UNIX_EPOCH)
                 .expect("Now < UnixEpoch?")
                 .as_secs(),
+            version: "latest".to_string(),
         }
     }
 
