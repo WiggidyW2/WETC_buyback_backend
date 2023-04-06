@@ -216,13 +216,18 @@ impl SubSingleItemsMaxBuy {
 impl WeveMarketMessages for SubSingleItemsMaxBuy {
     fn to_reqs(&self) -> Vec<MarketOrdersReq> {
         let mut reqs: Vec<MarketOrdersReq> = Vec::with_capacity(self.0.len());
-        for (pm, _, _) in self.sub_items() {
-            if let PricingModel::Rejected = pm {
-                return vec![];
-            }
-            for req in pm.to_reqs() {
-                reqs.push(req);
-            }
+        for (pm, item, _) in self.sub_items() {
+            match pm {
+                PricingModel::SingleMarketSingleItemMaxBuy(p) => reqs.extend(
+                    p.to_reqs()
+                ),
+                PricingModel::Rejected => (),
+                _ => panic!(
+                    "{} at location {} points to invalid PricingModel",
+                    item,
+                    self.1,
+                ),
+            };
         }
         reqs
     }
@@ -231,6 +236,7 @@ impl WeveMarketMessages for SubSingleItemsMaxBuy {
         &self,
         reps: Vec<(MarketOrdersReq, MarketOrdersRep)>,
     ) -> Price {
+        let mut priced: bool = false;
         let mut price: f64 = 0.0;
         for (req, rep) in reps {
             for (pm, item, qnt) in self.sub_items() {
@@ -238,13 +244,16 @@ impl WeveMarketMessages for SubSingleItemsMaxBuy {
                     PricingModel::SingleMarketSingleItemMaxBuy(sipm) => {
                         if req.type_id == sipm.0 {
                             match sipm.get_price(vec![(req, rep)]) {
-                                Price::Rejected => return Price::Rejected,
-                                Price::Accepted(siprice) => price += siprice * qnt,
+                                Price::Accepted(siprice) => {
+                                    priced = true;
+                                    price += siprice * qnt;
+                                },
+                                Price::Rejected => (),
                             }
                             break;
                         }
                     },
-                    PricingModel::Rejected => return Price::Rejected,
+                    PricingModel::Rejected => (),
                     _ => panic!(
                         "{} at location {} points to invalid PricingModel",
                         item,
@@ -253,7 +262,10 @@ impl WeveMarketMessages for SubSingleItemsMaxBuy {
                 }
             }
         }
-        Price::Accepted(price)
+        match priced {
+            true => Price::Accepted(price),
+            false => Price::Rejected,
+        }
     }
 
     fn price_source(&self) -> PriceSource {
