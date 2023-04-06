@@ -23,9 +23,9 @@ use gcloud_sdk;
 pub type Client = proto::weve_market_client::WeveMarketClient<
     tonic::transport::Channel
 >;
-type PriceSource = &'static str;
 type Location = &'static str;
 type Market = &'static str;
+type PriceSource = String;
 type Hash<'s> = &'s str;
 type ItemName = String;
 type Quantity = f64;
