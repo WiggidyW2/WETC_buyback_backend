@@ -246,7 +246,7 @@ impl WeveMarketMessages for SubSingleItemsMaxBuy {
                     },
                     PricingModel::Rejected => return Price::Rejected,
                     _ => panic!(
-                        "{} at location {} as points to invalid PricingModel",
+                        "{} at location {} points to invalid PricingModel",
                         item,
                         self.1,
                     ),
@@ -261,14 +261,13 @@ impl WeveMarketMessages for SubSingleItemsMaxBuy {
         let mut first = true;
         for (pm, item, qnt) in self.sub_items() {
             ps.push_str(&format!(
-                "{{item:{},quantity:{},description:{}}}",
+                "{{item:{},quantity:{},description:{}}},",
                 item,
                 qnt,
                 pm.price_source(),
             ));
-            match first {
-                true => first = false,
-                false => ps.push(','),
+            if first {
+                first = false;
             }
         }
         if !first { // remove trailing comma unless self.0 is empty
