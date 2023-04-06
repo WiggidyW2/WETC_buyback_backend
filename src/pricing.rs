@@ -1,6 +1,6 @@
 use crate::{
-    {TypeId, Market, Quantity, Client, PriceMod, PriceSource},
-    static_map::MAX_MULTI_ITEM,
+    {TypeId, Market, Quantity, Client, PriceMod, PriceSource, Location},
+    static_map::{PM_MAP, MAX_MULTI_ITEM, MAX_SUB_ITEM},
     error::Error,
     proto::*,
 };
@@ -17,6 +17,7 @@ pub enum Price {
 pub enum PricingModel {
     SingleMarketSingleItemMaxBuy(SingleMarketSingleItemMaxBuy),
     SingleMarketMultiItemMaxBuy(SingleMarketMultiItemMaxBuy),
+    SubSingleItemsMaxBuy(SubSingleItemsMaxBuy),
     Rejected,
 }
 
@@ -25,14 +26,20 @@ pub struct SingleMarketSingleItemMaxBuy(
     pub TypeId,
     pub Market,
     pub PriceMod,
-    pub PriceSource,
+    pub &'static str,
 );
 #[derive(Debug, Clone, PartialEq)]
 pub struct SingleMarketMultiItemMaxBuy(
     pub [Option<(TypeId, Quantity)>; MAX_MULTI_ITEM],
     pub Market,
     pub PriceMod,
-    pub PriceSource,
+    pub &'static str,
+);
+#[derive(Debug, Clone, PartialEq)]
+pub struct SubSingleItemsMaxBuy(
+    pub [(&'static str, Quantity); MAX_SUB_ITEM],
+    pub Location,
+    pub &'static str,
 );
 
 trait WeveMarketMessages {
@@ -46,29 +53,62 @@ trait WeveMarketMessages {
 
 impl PricingModel {
     pub async fn get_price(&self, client: Client) -> Result<Price, Error> {
-        let reps: Vec<(MarketOrdersReq, MarketOrdersRep)> = match self {
-            PricingModel::SingleMarketSingleItemMaxBuy(p) => p.to_reqs(),
-            PricingModel::SingleMarketMultiItemMaxBuy(p) => p.to_reqs(),
-            PricingModel::Rejected => return Ok(Price::Rejected),
+        if let PricingModel::Rejected = self {
+            return Ok(Price::Rejected);
         }
+        // let reps: Vec<(MarketOrdersReq, MarketOrdersRep)> = match self {
+        //     PricingModel::SingleMarketSingleItemMaxBuy(p) => p.to_reqs(),
+        //     PricingModel::SingleMarketMultiItemMaxBuy(p) => p.to_reqs(),
+        //     PricingModel::Rejected => return Ok(Price::Rejected),
+        // }
+        //     .into_iter()
+        //     .map(|req| get_market_orders(client.clone(), req))
+        //     .collect::<FuturesUnordered<_>>()
+        //     .try_collect() // Do not try to type-annotate this
+        //     .await?;
+        let reps: Vec<(MarketOrdersReq, MarketOrdersRep)> = self
+            .to_reqs()
             .into_iter()
             .map(|req| get_market_orders(client.clone(), req))
             .collect::<FuturesUnordered<_>>()
             .try_collect() // Do not try to type-annotate this
             .await?;
         
-        Ok(match self {
-            PricingModel::SingleMarketSingleItemMaxBuy(p) => p.get_price(reps),
-            PricingModel::SingleMarketMultiItemMaxBuy(p) => p.get_price(reps),
-            PricingModel::Rejected => unreachable!(),
-        })
+        // Ok(match self {
+        //     PricingModel::SingleMarketSingleItemMaxBuy(p) => p.get_price(reps),
+        //     PricingModel::SingleMarketMultiItemMaxBuy(p) => p.get_price(reps),
+        //     PricingModel::Rejected => unreachable!(),
+        // })
+        Ok(self.get_price_inner(reps))
     }
 
     pub fn price_source(&self) -> PriceSource {
         match self {
             PricingModel::SingleMarketSingleItemMaxBuy(p) => p.price_source(),
             PricingModel::SingleMarketMultiItemMaxBuy(p) => p.price_source(),
-            PricingModel::Rejected => "Rejected",
+            PricingModel::SubSingleItemsMaxBuy(p) => p.price_source(),
+            PricingModel::Rejected => "Rejected".to_string(),
+        }
+    }
+
+    fn to_reqs(&self) -> Vec<MarketOrdersReq> {
+        match self {
+            PricingModel::SingleMarketSingleItemMaxBuy(p) => p.to_reqs(),
+            PricingModel::SingleMarketMultiItemMaxBuy(p) => p.to_reqs(),
+            PricingModel::SubSingleItemsMaxBuy(p) => p.to_reqs(),
+            PricingModel::Rejected => vec![],
+        }
+    }
+
+    fn get_price_inner(
+        &self,
+        reps: Vec<(MarketOrdersReq, MarketOrdersRep)>,
+    ) -> Price {
+        match self {
+            PricingModel::SingleMarketSingleItemMaxBuy(p) => p.get_price(reps),
+            PricingModel::SingleMarketMultiItemMaxBuy(p) => p.get_price(reps),
+            PricingModel::SubSingleItemsMaxBuy(p) => p.get_price(reps),
+            PricingModel::Rejected => Price::Rejected,
         }
     }
 }
@@ -101,7 +141,7 @@ impl WeveMarketMessages for SingleMarketSingleItemMaxBuy {
     }
 
     fn price_source(&self) -> PriceSource {
-        self.3
+        self.3.to_string()
     }
 }
 
@@ -149,7 +189,96 @@ impl WeveMarketMessages for SingleMarketMultiItemMaxBuy {
     }
 
     fn price_source(&self) -> PriceSource {
-        self.3
+        self.3.to_string()
+    }
+}
+
+impl SubSingleItemsMaxBuy {
+    fn sub_items(&self) -> impl Iterator<Item = (&PricingModel, &'static str, Quantity)> {
+        self.0
+            .iter()
+            .filter_map(
+                |s| match *s {
+                    ("", _) => None,
+                    (item, qnt) => match PM_MAP
+                        .get(self.1)
+                        .unwrap()
+                        .get(item)
+                    {
+                        Some(p) => Some((p, item, qnt)),
+                        None => Some((&PricingModel::Rejected, item, qnt)),
+                    }
+                }
+            )
+    }
+}
+
+impl WeveMarketMessages for SubSingleItemsMaxBuy {
+    fn to_reqs(&self) -> Vec<MarketOrdersReq> {
+        let mut reqs: Vec<MarketOrdersReq> = Vec::with_capacity(self.0.len());
+        for (pm, _, _) in self.sub_items() {
+            if let PricingModel::Rejected = pm {
+                return vec![];
+            }
+            for req in pm.to_reqs() {
+                reqs.push(req);
+            }
+        }
+        reqs
+    }
+
+    fn get_price(
+        &self,
+        reps: Vec<(MarketOrdersReq, MarketOrdersRep)>,
+    ) -> Price {
+        let mut price: f64 = 0.0;
+        for (req, rep) in reps {
+            for (pm, item, qnt) in self.sub_items() {
+                match pm {
+                    PricingModel::SingleMarketSingleItemMaxBuy(sipm) => {
+                        if req.type_id == sipm.0 {
+                            match sipm.get_price(vec![(req, rep)]) {
+                                Price::Rejected => return Price::Rejected,
+                                Price::Accepted(siprice) => price += siprice * qnt,
+                            }
+                            break;
+                        }
+                    },
+                    PricingModel::Rejected => return Price::Rejected,
+                    _ => panic!(
+                        "{} at location {} as points to invalid PricingModel",
+                        item,
+                        self.1,
+                    ),
+                }
+            }
+        }
+        Price::Accepted(price)
+    }
+
+    fn price_source(&self) -> PriceSource {
+        let mut ps = String::new();
+        let mut first = true;
+        for (pm, item, qnt) in self.sub_items() {
+            ps.push_str(&format!(
+                "{{item:{},quantity:{},description:{}}}",
+                item,
+                qnt,
+                pm.price_source(),
+            ));
+            match first {
+                true => first = false,
+                false => ps.push(','),
+            }
+        }
+        if !first { // remove trailing comma unless self.0 is empty
+            ps.pop();
+        }
+        format!(
+            "MP{{description:{},values:[{}]}}",
+            self.2,
+            ps,
+        )
     }
 }
 
