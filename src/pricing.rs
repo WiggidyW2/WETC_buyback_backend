@@ -261,7 +261,7 @@ impl WeveMarketMessages for SubSingleItemsMaxBuy {
         let mut first = true;
         for (pm, item, qnt) in self.sub_items() {
             ps.push_str(&format!(
-                "{{item:{},quantity:{},description:{}}},",
+                "{{\"item\":\"{}\",\"quantity\":{},\"description\":\"{}\"}},",
                 item,
                 qnt,
                 pm.price_source(),
@@ -274,7 +274,7 @@ impl WeveMarketMessages for SubSingleItemsMaxBuy {
             ps.pop();
         }
         format!(
-            "MP{{description:{},values:[{}]}}",
+            "MP{{\"description\":\"{}\",\"values\":[{}]}}",
             self.2,
             ps,
         )
