@@ -15,6 +15,7 @@ pub enum Price {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PricingModel {
+    SingleMarketSingleItemMinSell(SingleMarketSingleItemMinSell),
     SingleMarketSingleItemMaxBuy(SingleMarketSingleItemMaxBuy),
     SingleMarketMultiItemMaxBuy(SingleMarketMultiItemMaxBuy),
     SubSingleItemsMaxBuy(SubSingleItemsMaxBuy),
@@ -23,6 +24,13 @@ pub enum PricingModel {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SingleMarketSingleItemMaxBuy(
+    pub TypeId,
+    pub Market,
+    pub PriceMod,
+    pub &'static str,
+);
+#[derive(Debug, Clone, PartialEq)]
+pub struct SingleMarketSingleItemMinSell(
     pub TypeId,
     pub Market,
     pub PriceMod,
@@ -56,16 +64,6 @@ impl PricingModel {
         if let PricingModel::Rejected = self {
             return Ok(Price::Rejected);
         }
-        // let reps: Vec<(MarketOrdersReq, MarketOrdersRep)> = match self {
-        //     PricingModel::SingleMarketSingleItemMaxBuy(p) => p.to_reqs(),
-        //     PricingModel::SingleMarketMultiItemMaxBuy(p) => p.to_reqs(),
-        //     PricingModel::Rejected => return Ok(Price::Rejected),
-        // }
-        //     .into_iter()
-        //     .map(|req| get_market_orders(client.clone(), req))
-        //     .collect::<FuturesUnordered<_>>()
-        //     .try_collect() // Do not try to type-annotate this
-        //     .await?;
         let reps: Vec<(MarketOrdersReq, MarketOrdersRep)> = self
             .to_reqs()
             .into_iter()
@@ -73,17 +71,12 @@ impl PricingModel {
             .collect::<FuturesUnordered<_>>()
             .try_collect() // Do not try to type-annotate this
             .await?;
-        
-        // Ok(match self {
-        //     PricingModel::SingleMarketSingleItemMaxBuy(p) => p.get_price(reps),
-        //     PricingModel::SingleMarketMultiItemMaxBuy(p) => p.get_price(reps),
-        //     PricingModel::Rejected => unreachable!(),
-        // })
         Ok(self.get_price_inner(reps))
     }
 
     pub fn price_source(&self) -> PriceSource {
         match self {
+            PricingModel::SingleMarketSingleItemMinSell(p) => p.price_source(),
             PricingModel::SingleMarketSingleItemMaxBuy(p) => p.price_source(),
             PricingModel::SingleMarketMultiItemMaxBuy(p) => p.price_source(),
             PricingModel::SubSingleItemsMaxBuy(p) => p.price_source(),
@@ -93,6 +86,7 @@ impl PricingModel {
 
     fn to_reqs(&self) -> Vec<MarketOrdersReq> {
         match self {
+            PricingModel::SingleMarketSingleItemMinSell(p) => p.to_reqs(),
             PricingModel::SingleMarketSingleItemMaxBuy(p) => p.to_reqs(),
             PricingModel::SingleMarketMultiItemMaxBuy(p) => p.to_reqs(),
             PricingModel::SubSingleItemsMaxBuy(p) => p.to_reqs(),
@@ -105,6 +99,7 @@ impl PricingModel {
         reps: Vec<(MarketOrdersReq, MarketOrdersRep)>,
     ) -> Price {
         match self {
+            PricingModel::SingleMarketSingleItemMinSell(p) => p.get_price(reps),
             PricingModel::SingleMarketSingleItemMaxBuy(p) => p.get_price(reps),
             PricingModel::SingleMarketMultiItemMaxBuy(p) => p.get_price(reps),
             PricingModel::SubSingleItemsMaxBuy(p) => p.get_price(reps),
@@ -134,6 +129,38 @@ impl WeveMarketMessages for SingleMarketSingleItemMaxBuy {
             .market_orders
             .into_iter()
             .max_by(|o1, o2| order_f64(&o1.price, &o2.price))
+        {
+            Some(order) => Price::Accepted(order.price * self.2),
+            None => Price::Rejected, // This is when there are no orders
+        }
+    }
+
+    fn price_source(&self) -> PriceSource {
+        self.3.to_string()
+    }
+}
+
+impl WeveMarketMessages for SingleMarketSingleItemMinSell {
+    fn to_reqs(&self) -> Vec<MarketOrdersReq> {
+        vec![MarketOrdersReq {
+            type_id: self.0,
+            market: self.1.to_string(),
+            buy: false,
+        }]
+    }
+
+    fn get_price(
+        &self,
+        reps: Vec<(MarketOrdersReq, MarketOrdersRep)>,
+    ) -> Price {
+        match reps
+            .into_iter()
+            .next()
+            .unwrap() // If this were None, we would have returned an error in async get_price
+            .1
+            .market_orders
+            .into_iter()
+            .min_by(|o1, o2| rev_order_f64(&o1.price, &o2.price))
         {
             Some(order) => Price::Accepted(order.price * self.2),
             None => Price::Rejected, // This is when there are no orders
@@ -317,6 +344,27 @@ fn order_f64(v1: &f64, v2: &f64) -> std::cmp::Ordering {
             }
             else if v2.is_finite() {
                 Ordering::Less
+            }
+            else {
+                unreachable!()
+            }
+        },
+    }
+}
+
+fn rev_order_f64(v1: &f64, v2: &f64) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    match v1.partial_cmp(v2) {
+        Some(ordering) => ordering,
+        None => {
+            if v1.is_finite() && v2.is_finite() {
+                Ordering::Equal
+            }
+            else if v1.is_finite() {
+                Ordering::Less
+            }
+            else if v2.is_finite() {
+                Ordering::Greater
             }
             else {
                 unreachable!()
