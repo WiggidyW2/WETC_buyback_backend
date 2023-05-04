@@ -3,6 +3,7 @@ use crate::{
     pricing::Price,
     error::Error,
     item::Item,
+    static_map::PRICE_VERSION,
 };
 
 use std::{
@@ -54,7 +55,7 @@ impl Response {
                 .duration_since(UNIX_EPOCH)
                 .expect("Now < UnixEpoch?")
                 .as_secs(),
-            version: "latest".to_string(),
+            version: PRICE_VERSION.to_string(),
         }
     }
 
